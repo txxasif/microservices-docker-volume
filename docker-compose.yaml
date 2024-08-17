@@ -1,0 +1,135 @@
+version: "3"
+
+services:
+  redis:
+    container_name: redis_container
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --loglevel warning
+    volumes:
+      - ./docker-volumes/cache:/data
+    networks:
+      - elastic
+
+  mongodb:
+    container_name: mongodb_container
+    image: mongo:latest
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./docker-volumes/data:/data/db
+    networks:
+      - elastic
+
+  mysql:
+    container_name: mysql_container
+    image: mysql:latest
+    restart: always
+    environment:
+      - MYSQL_USER=asif
+      - MYSQL_DATABASE=asif
+      - MYSQL_ROOT_PASSWORD=asif
+      - MYSQL_PASSWORD=asif
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker-volumes/mysql:/var/lib/mysql
+    networks:
+      - elastic
+
+  postgres:
+    container_name: postgres_container
+    image: postgres:latest
+    restart: always
+    environment:
+      - POSTGRES_USER=asif
+      - POSTGRES_PASSWORD=asif
+      - POSTGRES_DB=asif
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker-volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - elastic
+
+  rabbitmq:
+    container_name: rabbitmq_container
+    image: rabbitmq:3.13.6-management
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=asif
+      - RABBITMQ_DEFAULT_PASS=asif
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - elastic
+
+  elasticsearch:
+    container_name: elasticsearch_container
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./docker-volumes/elasticsearch-data:/usr/share/elasticsearch/data
+    user: "1000:1000"
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - elastic
+
+  kibana:
+    container_name: kibana_container
+    image: docker.elastic.co/kibana/kibana:8.10.4
+    ports:
+      - 5601:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    volumes:
+      - ./kibana.yml:/usr/share/kibana/config/kibana.yml
+    depends_on:
+      - elasticsearch
+    networks:
+      - elastic
+
+  notifications:
+    container_name: notification_container
+    build:
+      context: ../server/notification-service
+      dockerfile: Dockerfile.dev
+    restart: always
+    ports:
+      - "4001:4001"
+    env_file: ../server/notification-service/.env
+    environment:
+      - ENABLE_APM=0
+      - NODE_ENV=development
+      - CLIENT_URL=http://host.docker.internal:3000
+      - RABBITMQ_ENDPOINT=amqp://asif:asif@rabbitmq:5672
+      - SENDER_EMAIL=makayla.kozey21@ethereal.email
+      - SENDER_EMAIL_PASSWORD=ZjVqV6UZp5TW6CM5v2
+      - ELASTIC_SEARCH_URL=http://elastic:admin1234@elasticsearch:9200
+      - ELASTIC_APM_SERVER_URL=http://localhost:8200
+      - ELASTIC_APM_SECRET_TOKEN=
+    depends_on:
+      - elasticsearch
+      - rabbitmq
+    networks:
+      - elastic
+
+networks:
+  elastic:
+    name: elastic
